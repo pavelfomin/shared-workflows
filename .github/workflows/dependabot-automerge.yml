@@ -1,0 +1,69 @@
+name: Dependabot Auto Merge
+
+on:
+    workflow_call:
+        inputs:
+            user:
+                type: string
+                required: true
+            url:
+                type: string
+                required: true
+            merge_strategy:
+                type: string
+                default: 'squash'
+                description: "The type of auto merge [squash,merge]"
+            merge_patches:
+                type: boolean
+                default: true
+                description: "Set patch updates to auto-merge"
+            merge_minor:
+                type: boolean
+                default: true
+                description: "Set minor updates to auto-merge"
+            exclusion_regex:
+                type: string
+                default: ''
+                description: "Dependency exclusion regex"
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    if: ${{inputs.user == 'dependabot[bot]'}}
+    steps:
+
+       - name: Dependabot metadata
+         id: metadata
+         uses: dependabot/fetch-metadata@v2
+         with:
+           github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+       - name: Check dependency exclusion
+         id: dependency-exclusion
+         run: |
+           echo "Dependencies: ${{ steps.metadata.outputs.dependency-names }}"
+           if [[ -n "${{ inputs.exclusion_regex }}" && "${{ steps.metadata.outputs.dependency-names }}" =~ ${{ inputs.exclusion_regex }} ]]; then
+               echo "match=true" >> $GITHUB_OUTPUT
+               echo "dependency exclusion regex '${{ inputs.exclusion_regex }}' matched, skipping PR auto merge"
+           fi
+
+       - name: Approve a PR
+         id: approve
+         if: ${{ !steps.dependency-exclusion.outputs.match && ((steps.metadata.outputs.update-type == 'version-update:semver-patch' && inputs.merge_patches) || (steps.metadata.outputs.update-type == 'version-update:semver-minor' && inputs.merge_minor)) }}
+         run: |
+            gh pr review --approve "$PR_URL"
+         env:
+           PR_URL: ${{inputs.url}}
+           GH_TOKEN: ${{secrets.GITHUB_TOKEN}} 
+
+       - name: Enable auto-merge for Dependabot PRs
+         id: merge
+         if: steps.approve.outcome == 'success'
+         run: |
+            gh pr merge --auto --${{inputs.merge_strategy}} "$PR_URL"
+         env:
+            PR_URL: ${{inputs.url}}
+            GH_TOKEN: ${{secrets.GITHUB_TOKEN}}          

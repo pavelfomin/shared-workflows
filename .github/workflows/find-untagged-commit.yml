@@ -1,0 +1,35 @@
+name: Find latest untagged commit that is older than the age specified
+
+on:
+  workflow_dispatch:
+    inputs:
+      age:
+        type: string
+        default: '1 hour ago'
+
+  workflow_call:
+    inputs:
+      age:
+        type: string
+        default: '1 hour ago'
+    outputs:
+      hash:
+        value: ${{ jobs.latest-commit.outputs.hash }}
+
+jobs:
+  latest-commit:
+    runs-on: docker
+    outputs:
+      hash: ${{ steps.get_latest_hash.outputs.hash }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: get latest hash
+        id: get_latest_hash
+        run: |
+          hash=$(git log $(git describe --abbrev=0 --tags --first-parent)..HEAD --before="${{ inputs.age }}" --max-count=1 --pretty=format:"%H")
+          echo "latest hash: $hash"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
